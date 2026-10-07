@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>赶得上吗 · 北京出行组合策略</title>
+<meta name="description" content="输入起点、终点、必须到达的时间和预算，找出真的赶得上的最便宜方案。地图只给行程时间，这里算门到门时间。">
+<meta name="theme-color" content="#f7f7f5">
+<style>
+  :root{
+    --bg:#f7f7f5; --card:#ffffff; --line:#e3e1db;
+    --tx:#1c1c1a; --tx2:#6b6a65; --tx3:#9a988f;
+    --blue:#185FA5; --blue-bg:#E6F1FB; --amber:#854F0B; --amber-bg:#FAEEDA;
+    --red:#A32D2D; --red-bg:#FCEBEB; --green:#3B6D11; --green-bg:#EAF3DE;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--tx);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px; line-height:1.6; padding:24px 16px 60px;
+  }
+  .wrap{max-width:920px;margin:0 auto}
+  h1{font-size:20px;font-weight:500;letter-spacing:.2px}
+  .sub{color:var(--tx2);font-size:13px;margin-top:4px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-top:16px}
+  .form{display:grid;grid-template-columns:1fr 1fr 108px 108px 148px auto;gap:12px;align-items:end}
+  .rule{display:grid;grid-template-columns:88px 1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+  .rule:last-of-type{border-bottom:none}
+  .modes{display:flex;gap:6px;flex-wrap:wrap}
+  .mchip{font-size:12px;padding:4px 10px;border:1px solid var(--line);border-radius:20px;cursor:pointer;background:#fff;color:var(--tx2);user-select:none}
+  .mchip.on{background:var(--blue);border-color:var(--blue);color:#fff}
+  .mchip.dis{opacity:.4;cursor:not-allowed}
+  .del{background:none;border:1px solid var(--line);color:var(--tx3);padding:4px 9px;border-radius:6px;font-size:12px;cursor:pointer}
+  .del:hover{color:var(--red);border-color:var(--red)}
+  .add{background:#fff;color:var(--blue);border:1px dashed var(--blue);height:32px;padding:5px 14px;font-size:13px}
+  .field{position:relative}
+  .field label{display:block;font-size:12px;color:var(--tx2);margin-bottom:5px}
+  /* 输入补全下拉 */
+  .ac{position:absolute;left:0;right:0;top:100%;z-index:60;margin-top:4px;
+      background:var(--card);border:1px solid var(--line);border-radius:8px;
+      box-shadow:0 6px 20px rgba(0,0,0,.10);max-height:240px;overflow:auto;display:none}
+  .ac.open{display:block}
+  .ac-i{padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f2f1ec}
+  .ac-i:last-child{border-bottom:none}
+  .ac-i.on,.ac-i:hover{background:var(--blue-bg)}
+  .ac-i b{color:var(--blue);font-weight:600}
+  .ac-i small{color:var(--tx3);font-size:11px;margin-left:6px}
+  .ac-empty{padding:9px 12px;font-size:12px;color:var(--tx3)}
+  .field input,.field select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;
+    background:var(--card);color:var(--tx);font-size:14px;font-family:inherit;
+  }
+  .field input:focus,.field select:focus{outline:none;border-color:var(--blue)}
+  button{
+    padding:9px 20px;background:var(--blue);color:#fff;border:none;border-radius:8px;
+    font-size:14px;font-family:inherit;cursor:pointer;height:38px;
+  }
+  button:hover{opacity:.88}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:500}
+  .b-demo{background:var(--amber-bg);color:var(--amber)}
+  .b-live{background:var(--green-bg);color:var(--green)}
+  .hero{background:var(--blue-bg);border:none}
+  .hero.fail{background:var(--red-bg)}
+  .hero .lab{font-size:12px;color:var(--blue);letter-spacing:.4px}
+  .hero.fail .lab{color:var(--red)}
+  .hero .route{font-size:19px;font-weight:500;margin:6px 0 14px}
+  .metrics{display:flex;gap:28px;flex-wrap:wrap}
+  .metric .n{font-size:26px;font-weight:500;line-height:1.2}
+  .metric .k{font-size:12px;color:var(--tx2)}
+  .legs{margin-top:14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .leg{background:#fff;border:1px solid var(--line);border-radius:6px;padding:3px 9px;font-size:12px;color:var(--tx)}
+  .save{margin-top:14px;padding-top:12px;border-top:1px solid rgba(24,95,165,.18);font-size:13px;color:var(--blue)}
+  .hero.fail .save{color:var(--red);border-top-color:rgba(163,45,45,.2)}
+  .risk{display:inline-block;font-size:12px;padding:2px 9px;border-radius:5px;margin-left:8px}
+  .risk-r{background:var(--red-bg);color:var(--red)}
+  .risk-a{background:var(--amber-bg);color:var(--amber)}
+  .risk-g{background:var(--green-bg);color:var(--green)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-weight:500;color:var(--tx2);font-size:12px;padding:0 8px 8px;border-bottom:1px solid var(--line)}
+  td{padding:11px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr.over td{color:var(--tx3)}
+  tr.pick td{background:var(--blue-bg)}
+  tr.excl td{color:var(--tx3);background:#faf9f6}
+  .st{font-size:11px;padding:2px 8px;border-radius:5px;white-space:nowrap}
+  .est{display:inline-block;margin-left:5px;font-size:10px;font-weight:700;color:var(--amber);
+    background:var(--amber-bg);padding:1px 5px;border-radius:3px;vertical-align:middle;white-space:nowrap}
+  .st-rec{background:var(--blue);color:#fff}
+  .st-alt{background:var(--green-bg);color:var(--green)}
+  .st-pf{background:var(--line);color:var(--tx2)}
+  .st-no{background:var(--red-bg);color:var(--red)}
+  .st-ex{background:#f0efea;color:var(--tx3)}
+  .hidden{font-size:12px;color:var(--amber);white-space:normal}
+  .note{font-size:12px;color:var(--tx3);margin-top:10px;line-height:1.7}
+  .warn{background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:12px 14px;font-size:13px;margin-top:16px}
+  .warn.red{background:var(--red-bg);color:var(--red)}
+  code{font-family:ui-monospace,"SF Mono",Consolas,monospace;background:#f0efea;padding:1px 5px;border-radius:4px;font-size:12px}
+  .kv{display:grid;grid-template-columns:170px 1fr;gap:4px 12px;font-size:13px;color:var(--tx2)}
+  .kv b{color:var(--tx);font-weight:500}
+  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+  .chip{font-size:12px;padding:5px 11px;border:1px solid var(--line);border-radius:20px;cursor:pointer;background:#fff;color:var(--tx2)}
+  .chip:hover{border-color:var(--blue);color:var(--blue)}
+  h3{font-size:14px;font-weight:500;margin-bottom:10px}
+  .src{font-size:11px;padding:1px 6px;border-radius:4px;background:#f0efea;color:var(--tx3);margin-left:6px}
+  .src.real{background:var(--green-bg);color:var(--green)}
+  .src.calc{background:var(--amber-bg);color:var(--amber)}
+  .keyform{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-top:4px}
+  .keycard{border-color:var(--amber)}
+  .fold{font-size:12px;color:var(--blue);cursor:pointer;user-select:none;margin-left:10px}
+  .hid{display:none}
+  @media(max-width:780px){
+    .keyform{grid-template-columns:1fr}
+    .form{grid-template-columns:1fr 1fr}
+    button{width:100%}
+    th:nth-child(5),td:nth-child(5),th:nth-child(6),td:nth-child(6){display:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>赶得上吗 <span style="font-size:13px;color:var(--tx3);font-weight:400">北京出行组合策略</span></h1>
+  <p class="sub">给定<strong>必须到达的时间</strong>和<strong>预算</strong>，找出真的赶得上的最便宜方案 <span id="mode" class="badge b-demo">内置真实路网数据</span></p>
+  <p class="sub" style="margin-top:-6px;color:var(--tx2);font-size:13px">
+    地图 App 告诉你的是「路上要多久」，这里是「从出门到进门要多久」——
+    叫车等待、枢纽排队、找车停车、候车进出站，全都算进去。
+  </p>
+
+  <div class="card keycard" id="keycard">
+    <h3>高德 Key 设置 <span id="keystatus" class="badge b-demo">未配置</span>
+      <span class="fold" id="fold">收起</span></h3>
+    <div id="keybody">
+      <p class="note" style="margin-bottom:12px">
+        不填也能用：页面会跑内置的 9 个地点 + OSRM 真实路网数据。<br>
+        填了之后可以查<strong>任意地点</strong>，并且<strong>换乘次数、地铁线路、公交票价</strong>全部换成高德真实路径规划的结果。
+        Key 只存在你自己浏览器的 localStorage 里，不会上传到任何地方。
+      </p>
+      <div class="keyform">
+        <div class="field"><label>Key</label><input id="amapKey" placeholder="粘贴 Web端(JS API) 的 key"></div>
+        <div class="field"><label>安全密钥 securityJsCode</label><input id="amapSec" placeholder="粘贴安全密钥"></div>
+        <div><button id="saveKey">保存并启用</button></div>
+      </div>
+      <div class="keyform" style="margin-top:10px">
+        <div><button id="testKey" style="background:var(--tx2)">测试连接</button></div>
+        <div><button id="clearKey" style="background:var(--tx3)">清除 Key</button></div>
+      </div>
+      <p class="note" id="keymsg"></p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="form">
+      <div class="field"><label>起点</label><input id="origin" value="北京西站" autocomplete="off" spellcheck="false"><div class="ac" id="ac-origin"></div></div>
+      <div class="field"><label>目的地</label><input id="dest" value="莲葩园" autocomplete="off" spellcheck="false"><div class="ac" id="ac-dest"></div></div>
+      <div class="field"><label>限制时间（分钟）</label><input id="limit" type="number" value="19"></div>
+      <div class="field"><label>预算上限（元）</label><input id="budget" type="number" placeholder="不限"></div>
+      <div class="field"><label>时段</label>
+        <select id="period"><option value="peak">高峰 7-9/17-19</option><option value="offpeak">平峰</option><option value="night">夜间 22-6</option></select>
+      </div>
+      <div><button id="go">查询</button></div>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button id="share" style="background:var(--tx2);height:32px;padding:5px 14px;font-size:13px">复制分享链接</button>
+      <span id="sharemsg" style="font-size:12px;color:var(--tx3)"></span>
+    </div>
+    <div class="kv" style="margin-top:14px">
+      <span>数据来源</span><b id="srcLine"></b>
+      <span>已计入的隐藏时间</span><b id="cfgline"></b>
+    </div>
+    <p class="note" id="tip"></p>
+  </div>
+
+  <div class="card">
+    <h3>方式规则 <span style="font-weight:400;color:var(--tx3);font-size:12px">可选 · 每条规则选「只能 / 不能 / 尽量」+ 一种或多种方式</span></h3>
+    <div id="rules"></div>
+    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="add" id="addRule">+ 添加规则</button>
+      <span style="font-size:12px;color:var(--tx3)">
+        <b>只能</b>=只保留这些方式 · <b>不能</b>=排除这些方式 · <b>尽量</b>=不硬过滤，满足预算和时限时优先选
+      </span>
+    </div>
+    <p class="note" style="margin-top:10px">
+      三类语义不一样：<b>只能/不能是硬过滤</b>（不符合的方案直接不算候选）；<b>尽量是软偏好</b>（仍是候选，但排序时优先）。
+      例如「只能 公交」会把打车、地铁全部排除；「尽量 驾车」则是在预算内优先选打车，代价是更贵。
+    </p>
+  </div>
+
+  <div id="warn" class="warn" style="display:none"></div>
+
+  <div class="card hero" id="hero" style="display:none">
+    <div class="lab" id="h-lab">推荐方案</div>
+    <div class="route" id="h-route"></div>
+    <div class="metrics">
+      <div class="metric"><div class="n" id="h-cost"></div><div class="k">费用</div></div>
+      <div class="metric"><div class="n" id="h-time"></div><div class="k">门到门耗时</div></div>
+      <div class="metric"><div class="n" id="h-ride"></div><div class="k">其中纯乘车</div></div>
+      <div class="metric"><div class="n" id="h-margin"></div><div class="k">余量<span id="h-risk"></span></div></div>
+    </div>
+    <div class="legs" id="h-legs"></div>
+    <div class="save" id="h-save"></div>
+  </div>
+
+  <div class="card" id="advise-card" style="display:none">
+    <h3>如果放宽时间 / 预算</h3>
+    <div class="kv" id="advise"></div>
+  </div>
+
+  <div class="card" id="table-card" style="display:none">
+    <h3>全部方案对比 <span id="tblNote" style="font-weight:400;color:var(--tx3);font-size:12px"></span></h3>
+    <table>
+      <thead><tr>
+        <th>方式</th><th>门到门</th><th>费用</th><th>构成</th><th>纯乘车</th><th>隐藏时间</th><th>状态</th>
+      </tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <p class="note" id="tableNote"></p>
+  </div>
+
+  <div class="card">
+    <h3>模型怎么算的（以及哪里信不过）</h3>
+    <div class="kv" id="explain"></div>
+  </div>
+
+  <div class="card">
+    <h3>这是什么，和地图 App 有什么不一样</h3>
+    <div class="kv">
+      <span>一句话</span><b>地图 App 回答「怎么去最快」，这里回答「在 X 分钟内赶到，最少要花多少钱」。</b>
+      <span>怎么用</span><b>填起点、终点、<strong>必须到达的分钟数</strong>、预算上限 → 页面给出唯一一个推荐方案，并说明它比最快的方案省了多少钱、多花几分钟。</b>
+      <span>关键差别</span><b>地图上的「33 分钟」是车程。加上叫车等待和火车站出租排队，门到门是 46 分钟。这一层没人替你算，是本工具的全部价值。</b>
+      <span>规则三类</span><b>「只能 / 不能」是硬过滤，不符合的方案直接不算；「尽量」是软偏好，可以为了它多花钱，但会明说多付了多少。</b>
+      <span>哪些数字可信</span><b>距离与骑行/步行耗时来自真实路网；驾车与轨道时间是按北京路况推算的保守值；换乘次数和线路走向<strong>目前仍是估算</strong>，配置高德 Key 后会换成真实路径规划。</b>
+      <span>赶不上时</span><b>不会硬凑一个方案。会直接说「最快的也要 N 分钟，差 M 分钟」，并给出放宽几分钟能省多少钱。</b>
+    </div>
+    <p class="note" style="margin-top:10px">
+      顶部填写高德 Web 端 (JS API) 的 Key 后，可查询任意地点，Key 只存在你自己浏览器里。
+      未配置时页面使用内置的 9 个北京地点与真实路网数据运行。
+    </p>
+  </div>
+
+  <p class="note" style="text-align:center;margin-top:22px;color:var(--tx3)">
+    赶得上吗 · 北京出行组合策略　·　结果仅供参考，赶飞机赶高铁请自行留出余量
+  </p>
+
+</div>
+
+<script>
+/* =========================================================
+   v3.2 模型
+   核心区别 v2：不再使用"地图给的行程时间"作为到达时间。
+   真实路网只提供【距离】，时间由 距离 ÷ 场景速度 推算。
+   ========================================================= */
+
+var CONFIG = {
+  // 场景速度 km/h：OSRM 的自由流时间在北京是 58-79km/h，不可用
+  speed: { peak:{local:20,fast:50}, offpeak:{local:30,fast:70}, night:{local:38,fast:80} },
+  // 路程中快速路/高速占比
+  fastShare: function(d){ return d<8?0.15 : d<20?0.35 : d<40?0.55 : 0.80; },
+  // 枢纽排队（分钟）—— 火车站/机场出租车排队是最大隐藏成本
+  hubQueue: { '北京西站':8, '北京南站':8, '北京北站':6, '大兴机场':10, '首都机场三号航站楼':12 },
+  overhead: {
+    taxiCall: {peak:8, offpeak:5, night:5},
+    bike: {find:4, park:2},
+    metro: {inout:4, wait:3},
+    busWait: 7
+  },
+  // 端到端速度（含停站/等灯/站内步行），不是运行速度
+  railKmh: 28, busKmh: 16, expressKmh: 100,
+  railDetour: 1.25, busDetour: 1.35, transfer: 8,
+  // 可行性上限：超出就不是候选方案
+  limit: { walkKm:2.5, bikeKm:20 },
+  // 限制时间未填/无效时的默认值（不产生 NaN）
+  defaultLimit: 45,
+  taxi: { startKm:3, startFee:13, perKm:2.3, fuel:1, longKm:15, longRate:1.5, stallUnit:5 },
+  airport: { '大兴机场':{fare:35,name:'大兴机场线'}, '首都机场三号航站楼':{fare:25,name:'首都机场线'} }
+};
+
+/* ---- 内置 OD 数据：距离与骑行/步行耗时来自 OSRM 真实路网 ---- */
+var POI = {
+  '北京西站':{ll:[116.31511,39.89354]},
+  '莲葩园':{ll:[116.41524,40.04344]},
+  '北京南站':{ll:[116.37093,39.86455]},
+  '北京大学东门':{ll:[116.30973,39.99078]},
+  '国贸':{ll:[116.45565,39.90702]},
+  '首都机场三号航站楼':{ll:[116.58751,40.07884]},
+  '天通苑北':{ll:[116.40677,40.08209]},
+  '中关村':{ll:[116.31038,39.98266]},
+  '大兴机场':{ll:[116.41231,39.49734]}
+};
+var OD_DB = {
+  '北京西站|莲葩园':                {drv:25.2, bike:{km:24.5,min:103}, foot:{km:24.9,min:332}, transfers:2},
+  '北京西站|大兴机场':              {drv:55.4, bike:{km:51.4,min:201}, foot:{km:53.4,min:712}, transfers:2},
+  '北京南站|北京大学东门':          {drv:21.5, bike:{km:18.3,min:75},  foot:{km:18.9,min:252}, transfers:1},
+  '国贸|首都机场三号航站楼':        {drv:25.0, bike:{km:25.1,min:98},  foot:{km:25.4,min:339}, transfers:1},
+  '天通苑北|中关村':                {drv:18.5, bike:{km:17.5,min:72},  foot:{km:17.8,min:238}, transfers:1}
+};
+
+/* ---------------- 计算函数 ---------------- */
+function haversine(a,b){
+  var R=6371, p=Math.PI/180;
+  var dp=(b[1]-a[1])*p, dl=(b[0]-a[0])*p;
+  var x=Math.sin(dp/2)*Math.sin(dp/2)+Math.cos(a[1]*p)*Math.cos(b[1]*p)*Math.sin(dl/2)*Math.sin(dl/2);
+  return 2*R*Math.asin(Math.sqrt(x));
+}
+function driveMin(km,period){
+  var s=CONFIG.speed[period]||CONFIG.speed.offpeak;
+  var f=CONFIG.fastShare(km);
+  return Math.round(km*(f/s.fast+(1-f)/s.local)*60);
+}
+function taxiFee(km,o){
+  o=o||{}; var t=CONFIG.taxi, f=t.startFee;
+  if(km>15){ f+=(15-3)*t.perKm; f+=(km-15)*t.perKm*t.longRate; }
+  else if(km>3){ f+=(km-3)*t.perKm; }
+  f+=t.fuel;
+  if(o.stallMin) f+=Math.floor(o.stallMin/5)*(o.peak?2*t.perKm:t.perKm);
+  if(o.night) f*=1.2;
+  if(o.toll) f+=o.toll;
+  return Math.round(f);
+}
+function metroFee(km){
+  return km<=6?3 : km<=12?4 : km<=22?5 : km<=32?6 : 6+Math.ceil((km-32)/20);
+}
+function busFee(km){ return km<=10?2 : 2+Math.ceil((km-10)/5); }
+function bikeFee(m){ return m<=15?1.5 : 1.5+Math.ceil((m-15)/15); }
+function railToAirport(straight,transfers){
+  var cityKm=straight*0.6, airKm=straight*0.4;
+  return Math.round(cityKm*CONFIG.railDetour/CONFIG.railKmh*60 + airKm/CONFIG.expressKmh*60
+    + transfers*CONFIG.transfer + 12 + CONFIG.overhead.metro.inout + CONFIG.overhead.metro.wait);
+}
+
+/* =========================================================
+   数值兜底层：任何方案都不允许出现 NaN / null / Infinity
+   数据缺失时，用模型按「距离 ÷ 该方式的速度」补一个具体数值，
+   并打上 *Est 标记，页面上显示「估算」而不是留空或显示 NaN。
+   ========================================================= */
+function isNum(v){ return typeof v==='number' && isFinite(v); }
+function numOr(v,d){ return isNum(v)?v:d; }
+
+var FALLBACK_KMH = { '步行':5, '骑行':15, '公交':16, '地铁':28, '打车':24 };
+
+function sanitizePlans(P, ctx){
+  ctx = ctx || {};
+  var straight = isNum(ctx.straight) ? ctx.straight : 10;
+  (P||[]).forEach(function(p){
+    // ① 距离
+    if(!isNum(p.km) || p.km < 0) p.km = Math.round(straight*1.3*10)/10;
+    // ② 纯乘车时间：<=0 或非法都按 距离÷方式速度 反推
+    if(!isNum(p.ride) || p.ride <= 0){
+      var v = FALLBACK_KMH[p.kind] || 24;
+      p.ride = Math.max(1, Math.round(p.km / v * 60));
+      p.rideEst = true;
+    }
+    p.ride = Math.round(p.ride);
+    // ③ 隐藏开销
+    if(!isNum(p.oh) || p.oh < 0) p.oh = 0;
+    p.oh = Math.round(p.oh);
+    // ④ 门到门
+    p.minutes = p.ride + p.oh;
+    // ⑤ 费用：非法就按北京规则从距离反算
+    if(!isNum(p.cost) || p.cost < 0){
+      p.cost = p.kind==='步行' ? 0
+             : p.kind==='骑行' ? bikeFee(p.minutes)
+             : p.kind==='公交' ? busFee(p.km)
+             : p.kind==='地铁' ? metroFee(p.km)
+             : taxiFee(p.km, {});
+      p.costEst = true;
+    }
+    p.cost = Math.round(p.cost*10)/10;
+    // ⑥ 换乘次数
+    if(!isNum(p.transfers)) p.transfers = 0;
+  });
+  return P;
+}
+
+function buildPlans(origin,dest,period){
+  var key=origin+'|'+dest;
+  if(!OD_DB[key]) return null;
+  var d=OD_DB[key];
+  var straight=haversine(POI[origin].ll,POI[dest].ll);
+  var air=CONFIG.airport[dest], toll=air?10:0;
+  var hub=CONFIG.hubQueue[origin]||0;
+  var P=[];
+  // 打车：给区间（平峰乐观 / 当前时段）
+  var dm=driveMin(d.drv,period);
+  var stall=Math.round(dm*0.35);
+  P.push({kind:'打车',legs:['步行到上车点','出租车','步行到门口'],ride:dm,
+    oh:CONFIG.overhead.taxiCall[period]+hub,
+    ohLabel:'叫车'+CONFIG.overhead.taxiCall[period]+'分'+ (hub?' + 枢纽排队'+hub+'分':''),
+    cost:taxiFee(d.drv,{stallMin:stall,peak:period==='peak',night:period==='night',toll:toll}),
+    feasible:true, note:period==='peak'?'含低速等候费':'' , src:'calc', modes:['taxi']});
+  var dmOff=driveMin(d.drv,'offpeak');
+  P.push({kind:'打车（平峰）',legs:['步行到上车点','出租车','步行到门口'],ride:dmOff,
+    oh:CONFIG.overhead.taxiCall.offpeak+hub, ohLabel:'叫车5分'+(hub?' + 枢纽排队'+hub+'分':''),
+    cost:taxiFee(d.drv,{stallMin:Math.round(dmOff*0.35),toll:toll}),
+    feasible:true, note:'若避开高峰', src:'calc', isRange:true, modes:['taxi']});
+  // 地铁
+  var railKm=straight*CONFIG.railDetour;
+  var metroRide = air ? railToAirport(straight,d.transfers)-7 : Math.round(railKm/CONFIG.railKmh*60)+d.transfers*CONFIG.transfer;
+  P.push({kind:'地铁',legs:['步行到站','地铁'+(air?' '+air.name:''),'步行到目的地'],ride:metroRide,
+    oh:CONFIG.overhead.metro.inout+CONFIG.overhead.metro.wait, ohLabel:'进出站4分 + 候车3分',
+    cost: air?air.fare : metroFee(railKm), feasible:true, note:d.transfers+'次换乘', src:'calc', modes:['metro']});
+  // 公交
+  var busKm=straight*CONFIG.busDetour;
+  P.push({kind:'公交',legs:['步行到站','公交','步行到目的地'],ride:Math.round(busKm/CONFIG.busKmh*60)+4,
+    oh:CONFIG.overhead.busWait, ohLabel:'候车7分', cost:busFee(busKm), feasible:true, src:'calc', modes:['bus']});
+  // 骑行（OSRM 真实）
+  P.push({kind:'骑行',legs:['找车','共享单车','停车'],ride:d.bike.min,
+    oh:CONFIG.overhead.bike.find+CONFIG.overhead.bike.park, ohLabel:'找车4分 + 停车2分',
+    cost:bikeFee(d.bike.min), feasible:d.bike.km<=CONFIG.limit.bikeKm, src:'real',
+    note:d.bike.km+' km', modes:['bike']});
+  // 步行（OSRM 真实）
+  P.push({kind:'步行',legs:['步行'],ride:d.foot.min, oh:0, ohLabel:'',
+    cost:0, feasible:d.foot.km<=CONFIG.limit.walkKm, src:'real', note:d.foot.km+' km', modes:['walk']});
+  sanitizePlans(P,{straight:straight});
+  return {plans:P, straight:straight, drv:d.drv, transfers:d.transfers};
+}
+
+/* ---------------- 预算 + 方式规则（只能 / 不能 / 尽量） ---------------- */
+var MODES=[['metro','地铁'],['bus','公交'],['taxi','打车·驾车'],['bike','骑行'],['walk','步行']];
+var RULES=[];
+function modeName(k){ for(var i=0;i<MODES.length;i++) if(MODES[i][0]===k) return MODES[i][1]; return k; }
+
+/* rules: [{type:'only'|'avoid'|'prefer', modes:['metro',...]}]
+   只能 / 不能 = 硬过滤；尽量 = 软偏好，只在排序时优先 */
+function applyRules(plans,rules){
+  plans.forEach(function(p){
+    p.ruleBlock=null; p.preferHit=false;
+    var ms=p.modes||[];
+    (rules||[]).forEach(function(r){
+      if(!r.modes||!r.modes.length) return;
+      var hit=ms.some(function(m){ return r.modes.indexOf(m)>=0; });
+      var all=ms.length? ms.every(function(m){ return r.modes.indexOf(m)>=0; }) : false;
+      var nm=r.modes.map(modeName).join('/');
+      if(r.type==='only' && !all)  p.ruleBlock='不是「'+nm+'」';
+      if(r.type==='avoid' && hit)  p.ruleBlock='含被排除的「'+nm+'」';
+      if(r.type==='prefer' && hit) p.preferHit=true;
+    });
+  });
+  return plans;
+}
+/* 是否进入候选：可行 + 非参考行 + 不违反规则 + 不超预算 */
+function hardOK(p,budget){
+  if(!p.feasible||p.isRange) return false;
+  if(p.ruleBlock) return false;
+  if(budget!=null && p.cost>budget) return false;
+  return true;
+}
+function hasPrefer(rules){
+  return (rules||[]).some(function(r){ return r.type==='prefer' && r.modes && r.modes.length; });
+}
+function cmpRec(a,b,prefer){
+  var ka=[0,a.cost,a.minutes], kb=[0,b.cost,b.minutes];
+  if(prefer){ ka[0]=a.preferHit?0:1; kb[0]=b.preferHit?0:1; }
+  for(var i=0;i<3;i++){ if(ka[i]!==kb[i]) return ka[i]-kb[i]; }
+  return 0;
+}
+
+function markPareto(ps,budget){
+  // 参考行（平峰打车）不参与竞争，只用于展示区间
+  var c=ps.filter(function(p){ return hardOK(p,budget); });
+  c.forEach(function(p){
+    p.pareto = !c.some(function(q){ return q!==p && q.minutes<=p.minutes && q.cost<=p.cost && (q.minutes<p.minutes||q.cost<p.cost); });
+  });
+  ps.forEach(function(p){ if(!hardOK(p,budget)) p.pareto=false; });
+  return ps;
+}
+function recommend(ps,limit,budget,rules){
+  var cand=ps.filter(function(p){ return hardOK(p,budget); });
+  var ok=cand.filter(function(p){ return p.minutes<=limit; });
+  var pref=hasPrefer(rules);
+  if(!ok.length){
+    var f=cand.slice().sort(function(a,b){return a.minutes-b.minutes;})[0];
+    return {feasible:false, pick:f, gap:f?f.minutes-limit:null, cand:cand};
+  }
+  var pick=ok.slice().sort(function(a,b){ return cmpRec(a,b,pref); })[0];
+  var cheapest=ok.slice().sort(function(a,b){ return a.cost-b.cost||a.minutes-b.minutes; })[0];
+  return {feasible:true, pick:pick, cheapest:cheapest, cand:ok,
+          preferPaid:(pref&&pick.preferHit&&cheapest!==pick)?(pick.cost-cheapest.cost):0};
+}
+function riskLevel(margin,limit){
+  if(margin<0) return ['赶不上','risk-r'];
+  if(margin<=limit*0.10) return ['太紧张','risk-r'];
+  if(margin<=limit*0.25) return ['偏紧','risk-a'];
+  return ['从容','risk-g'];
+}
+
+/* =========================================================
+   高德 Key 接入（可选）
+   只做三件事：地名→坐标、真实路网距离、真实公交/地铁方案。
+   时间仍然由本模型按场景速度/隐藏开销修正 —— 这是产品的核心。
+   ========================================================= */
+var AMAP={loaded:false,loading:false};
+function getKey(){
+  return { k:(localStorage.getItem('amap_key')||'').trim(), s:(localStorage.getItem('amap_sec')||'').trim() };
+}
+function liveReady(){ var c=getKey(); return !!(c.k&&c.s); }
+
+function loadAmap(){
+  var c=getKey();
+  if(!c.k||!c.s) return Promise.resolve('nokey');
+  if(AMAP.loaded) return Promise.resolve(null);
+  if(AMAP.loading) return Promise.resolve('loading');
+  AMAP.loading=true;
+  window._AMapSecurityConfig={securityJsCode:c.s};
+  return new Promise(function(res){
+    var sc=document.createElement('script');
+    sc.src='https://webapi.amap.com/maps?v=2.0&key='+encodeURIComponent(c.k)
+      +'&plugin=AMap.PlaceSearch,AMap.AutoComplete,AMap.Driving,AMap.Riding,AMap.Walking,AMap.Transfer';
+    sc.onload=function(){ AMAP.loading=false; AMAP.loaded=!!window.AMap; res(AMAP.loaded?null:'nosdk'); };
+    sc.onerror=function(){ AMAP.loading=false; res('neterr'); };
+    document.head.appendChild(sc);
+  });
+}
+function amapCall(make,run){
+  return new Promise(function(res){
+    var done=false;
+    var t=setTimeout(function(){ if(!done){done=true; res({err:'timeout'});} },15000);
+    try{
+      var s=make();
+      run(s,function(status,result){
+        if(done) return; done=true; clearTimeout(t);
+        res(status==='complete' ? {ok:result} : {err:status});
+      });
+    }catch(e){ if(!done){ done=true; clearTimeout(t); res({err:String(e).slice(0,80)}); } }
+  });
+}
+function geoOne(name){
+  return amapCall(
+    function(){ return new AMap.PlaceSearch({city:'北京',pageSize:1}); },
+    function(s,cb){ s.search(name,cb); }
+  ).then(function(r){
+    if(!r.ok||!r.ok.poiList||!r.ok.poiList.pois||!r.ok.poiList.pois.length) return null;
+    var p=r.ok.poiList.pois[0];
+    return {name:p.name, lng:p.location.lng, lat:p.location.lat, addr:(p.address||'').slice(0,40)};
+  });
+}
+function routeOne(kind,a,b){
+  var maker={
+    driving:function(){ return new AMap.Driving({policy:AMap.DrivingPolicy.LEAST_TIME}); },
+    riding:function(){ return new AMap.Riding(); },
+    walking:function(){ return new AMap.Walking(); }
+  }[kind];
+  return amapCall(maker, function(s,cb){
+    s.search(new AMap.LngLat(a.lng,a.lat), new AMap.LngLat(b.lng,b.lat), cb);
+  }).then(function(r){
+    if(!r.ok||!r.ok.routes||!r.ok.routes.length) return null;
+    var rt=r.ok.routes[0];
+    return {km:+(rt.distance/1000).toFixed(1), min:Math.round(rt.duration/60)};
+  });
+}
+function parseTransit(res){
+  if(!res.ok||!res.ok.plans||!res.ok.plans.length) return {metro:null,bus:null};
+  var metro=null, bus=null;
+  res.ok.plans.forEach(function(pl){
+    var segs=pl.segments||[];
+    var transits=segs.filter(function(s){ return s.transit; });
+    if(!transits.length) return;
+    var isMetro=transits.some(function(s){
+      return /地铁|轨道|机场线|快线|城铁/.test((s.transit.name||'')+(s.transit.type||''));
+    });
+    var lines=transits.map(function(s){ return (s.transit.name||'').trim(); }).filter(Boolean);
+    // 高德字段可能缺失或非数字：一律转成 null，交给 sanitizePlans 反推具体值
+    var pcost = (pl.cost!=null && pl.cost!=='') ? parseFloat(pl.cost) : null;
+    var rec={
+      ride: (pl.duration!=null && pl.duration!=='') ? Math.round(Number(pl.duration)/60) : null,
+      cost: isNum(pcost) ? pcost : null,
+      transfers:Math.max(0,transits.length-1),
+      lines:lines.slice(0,4),
+      km: (pl.distance!=null && pl.distance!=='') ? Math.round(Number(pl.distance)/100)/10 : null
+    };
+    if(isMetro && !metro) metro=rec;
+    if(!isMetro && !bus) bus=rec;
+  });
+  if(!metro && bus) metro=bus;
+  return {metro:metro, bus:bus};
+}
+
+/* 用高德真实数据 + 本模型的时间修正，组装方案 */
+async function buildPlansLive(origin,dest,period){
+  var a=await geoOne(origin), b=await geoOne(dest);
+  if(!a||!b) return null;
+  var straight=haversine([a.lng,a.lat],[b.lng,b.lat]);
+  var drv=await routeOne('driving',a,b);
+  var bike=await routeOne('riding',a,b);
+  var foot=await routeOne('walking',a,b);
+  var tp=await amapCall(
+    function(){ return new AMap.Transfer({city:'北京', policy:AMap.TransferPolicy.LEAST_TIME}); },
+    function(s,cb){ s.search(new AMap.LngLat(a.lng,a.lat), new AMap.LngLat(b.lng,b.lat), cb); }
+  );
+  var T=parseTransit(tp);
+  if(!drv && !T.metro && !bike) return null;
+
+  var isAir=/机场/.test(dest)||/机场/.test(b.name||'');
+  var toll=isAir?10:0;
+  var hub=CONFIG.hubQueue[origin] || (isAir?0:0);
+  var P=[];
+
+  // 打车：用高德的驾车时长（含路况）当基准，高峰版按模型速度保守上修
+  if(drv){
+    var dm=drv.min, stall=Math.round(dm*0.35);
+    P.push({kind:'打车',legs:['步行到上车点','出租车','步行到门口'],ride:dm,
+      oh:CONFIG.overhead.taxiCall[period]+hub,
+      ohLabel:'叫车'+CONFIG.overhead.taxiCall[period]+'分'+(hub?' + 枢纽排队'+hub+'分':''),
+      cost:taxiFee(drv.km,{stallMin:stall,peak:period==='peak',night:period==='night',toll:toll}),
+      feasible:true, note:'高德 '+drv.km+' km'+(period==='peak'?'，含低速等候费':''), src:'real', modes:['taxi']});
+    if(period!=='offpeak'){
+      var dmOff=driveMin(drv.km,'offpeak');
+      P.push({kind:'打车（平峰）',legs:['步行到上车点','出租车','步行到门口'],ride:dmOff,
+        oh:CONFIG.overhead.taxiCall.offpeak+hub, ohLabel:'叫车5分'+(hub?' + 枢纽排队'+hub+'分':''),
+        cost:taxiFee(drv.km,{stallMin:Math.round(dmOff*0.35),toll:toll}),
+        feasible:true, note:'若避开高峰', src:'calc', isRange:true, modes:['taxi']});
+    }
+  }
+
+  // 地铁（高德真实方案：线路 + 换乘 + 票价）
+  if(T.metro){
+    var m=T.metro;
+    var mc = m.cost!=null ? m.cost : metroFee(m.km);
+    P.push({kind:'地铁',legs:['步行到站'].concat(m.lines.length?m.lines:['地铁'],['步行到目的地']),
+      ride:m.ride, oh:CONFIG.overhead.metro.wait, ohLabel:'候车3分（高德时长已含步行与换乘）',
+      cost:mc, feasible:true, note:m.transfers+'次换乘', src:'real', modes:['metro']});
+  }
+  // 公交
+  if(T.bus){
+    var bu=T.bus;
+    var bc = bu.cost!=null ? bu.cost : busFee(bu.km);
+    P.push({kind:'公交',legs:['步行到站'].concat(bu.lines.length?bu.lines:['公交'],['步行到目的地']),
+      ride:bu.ride, oh:0, ohLabel:'高德时长已含候车与步行',
+      cost:bc, feasible:true, note:bu.transfers+'次换乘', src:'real', modes:['bus']});
+  }
+  // 骑行
+  if(bike){
+    P.push({kind:'骑行',legs:['找车','共享单车','停车'],ride:bike.min,
+      oh:CONFIG.overhead.bike.find+CONFIG.overhead.bike.park, ohLabel:'找车4分 + 停车2分',
+      cost:bikeFee(bike.min), feasible:bike.km<=CONFIG.limit.bikeKm, src:'real', note:bike.km+' km', modes:['bike']});
+  }
+  // 步行
+  if(foot){
+    P.push({kind:'步行',legs:['步行'],ride:foot.min, oh:0, ohLabel:'',
+      cost:0, feasible:foot.km<=CONFIG.limit.walkKm, src:'real', note:foot.km+' km', modes:['walk']});
+  }
+  sanitizePlans(P,{straight:straight});
+  return {plans:P, straight:straight, drv:drv?drv.km:0, transfers:T.metro?T.metro.transfers:0,
+          live:true, resolved:[a.name,b.name]};
+}
+
+/* ---------------- 渲染 ---------------- */
+var $ = function(id){ return document.getElementById(id); };
+
+async function render(){
+  var origin=$('origin').value.trim(), dest=$('dest').value.trim();
+  if(!origin||!dest) return;
+  $('tip').textContent='';
+  /* 限制时间：空 / 非数字 / 非正数 -> 给默认值并明说，绝不产生 NaN */
+  var limit=parseInt($('limit').value,10), limitNote='';
+  if(!isNum(limit) || limit<=0){
+    limit=CONFIG.defaultLimit;
+    limitNote='限制时间没填或不是有效数字，已按 '+CONFIG.defaultLimit+' 分钟计算。';
+  } else if(limit>1440){
+    limit=1440; limitNote='限制时间超过 24 小时，已按 1440 分钟计算。';
+  }
+  var period=$('period').value;
+  $('warn').style.display='none';
+  $('go').disabled=true; $('go').textContent='查询中…';
+
+  var built=null, liveErr='';
+  if(liveReady()){
+    var st=await loadAmap();
+    if(st===null){
+      try{ built=await buildPlansLive(origin,dest,period); }
+      catch(e){ liveErr='调用高德出错：'+String(e).slice(0,90); }
+      if(!built && !liveErr) liveErr='高德查不到「'+origin+' → '+dest+'」，已回退到内置数据。';
+    } else {
+      liveErr='高德 JS API 加载失败（'+st+'）。常见原因：Key 类型选错、域名白名单不含当前地址、或安全密钥没填。已回退到内置数据。';
+    }
+  }
+  if(!built){
+    if(!POI[origin]||!POI[dest]){
+      $('go').disabled=false; $('go').textContent='查询';
+      $('warn').className='warn red'; $('warn').style.display='block';
+      $('warn').textContent='「'+origin+'」或「'+dest+'」不在内置地点里。不配置高德 Key 就只能查内置这 9 个：'+Object.keys(POI).join('、')+'。';
+      $('hero').style.display='none'; $('table-card').style.display='none'; $('advise-card').style.display='none';
+      $('tbody').innerHTML='';
+      return;
+    }
+    built=buildPlans(origin,dest,period);
+    if(!built){
+      $('go').disabled=false; $('go').textContent='查询';
+      $('warn').className='warn red'; $('warn').style.display='block';
+      $('warn').textContent='这一组 OD 没有内置路网数据。可试试下面的预置路线，或接入高德 Key。';
+      $('hero').style.display='none'; $('table-card').style.display='none'; $('advise-card').style.display='none';
+      $('tbody').innerHTML='';
+      return;
+    }
+  }
+  if(liveErr){
+    $('warn').className='warn'; $('warn').style.display='block';
+    $('warn').textContent=liveErr;
+  }
+  $('go').disabled=false; $('go').textContent='查询';
+
+  /* 预算：非数字 / 负数 -> 按不限处理并明说 */
+  var bRaw=($('budget').value||'').trim(), budget=null, budgetNote='';
+  if(bRaw!==''){
+    var bv=parseFloat(bRaw);
+    if(!isNum(bv)){ budget=null; budgetNote='预算「'+bRaw+'」不是有效数字，已按「不限」处理。'; }
+    else if(bv<0){ budget=null; budgetNote='预算为负数，已按「不限」处理。'; }
+    else budget=bv;
+  }
+  applyRules(built.plans, RULES);
+  syncURL(origin,dest,limit,period,budget,RULES);
+  var plans=markPareto(built.plans,budget);
+  var rec=recommend(plans,limit,budget,RULES);
+  if(!rec.pick){
+    var near=plans.filter(function(p){return p.feasible&&!p.isRange&&!p.ruleBlock;})
+                  .sort(function(a,b){return a.cost-b.cost||a.minutes-b.minutes;})[0];
+    var msg = budget!=null
+      ? '预算 '+budget+' 元之内，没有任何方案同时满足时间和规则。'
+      : '按你的规则，没有任何可行方案。';
+    if(near){
+      msg += ' 最便宜的合规方案是「'+near.kind+'」'+near.cost+' 元 / '+near.minutes+' 分'
+           + (budget!=null && near.cost>budget ? '，<b>还差 '+(near.cost-budget)+' 元</b>' : '')
+           + (near.minutes>limit ? '，但它超时 '+(near.minutes-limit)+' 分钟' : '') + '。';
+    } else {
+      msg += ' 试着把「只能 / 不能」改成「尽量」，或删掉一条规则。';
+    }
+    $('go').disabled=false; $('go').textContent='查询';
+    $('warn').className='warn red'; $('warn').style.display='block';
+    $('warn').innerHTML=msg;
+    $('hero').style.display='none'; $('table-card').style.display='none'; $('advise-card').style.display='none';
+    $('tbody').innerHTML=''; $('h-lab').textContent='无解';
+    return;
+  }
+  var fastest=plans.filter(function(p){return hardOK(p,budget);}).sort(function(a,b){return a.minutes-b.minutes;})[0];
+  var inputNote=[limitNote,budgetNote].filter(Boolean).join(' ');
+
+  $('srcLine').innerHTML = built.live
+    ? '<span class="src real">高德实时路径规划</span> 提供距离、线路、换乘与票价 · <span class="src calc">模型修正</span> 门到门隐藏开销'
+    : '<span class="src real">OSRM 真实路网</span> 提供距离与骑行/步行耗时 · <span class="src calc">模型推算</span> 驾车与轨道时间';
+  $('cfgline').textContent='叫车等待 + 枢纽排队（北京西站 8 分）+ 找车停车 + 候车进出站';
+
+  // hero
+  var hero=$('hero'); hero.style.display='block';
+  var pick=rec.pick;
+  hero.className = rec.feasible ? 'card hero' : 'card hero fail';
+  $('h-lab').textContent = rec.feasible ? '推荐方案' : '赶不上';
+  $('h-route').textContent = built.live&&built.resolved ? built.resolved[0]+' → '+built.resolved[1] : origin+' → '+dest;
+  $('h-cost').innerHTML = pick.cost+' 元'+(pick.costEst?'<span class="est">估算</span>':'');
+  $('h-time').innerHTML = pick.minutes+' 分'+(pick.rideEst?'<span class="est">估算</span>':'');
+  $('h-ride').textContent = pick.ride+' 分';
+  var margin = rec.feasible ? limit-pick.minutes : -rec.gap;
+  $('h-margin').textContent = rec.feasible ? margin+' 分' : '差 '+numOr(rec.gap,0)+' 分';
+  var rk=riskLevel(margin,limit);
+  $('h-risk').innerHTML='<span class="risk '+rk[1]+'">'+rk[0]+'</span>';
+  $('h-legs').innerHTML = pick.legs.map(function(l){return '<span class="leg">'+l+'</span>';}).join('<span style="color:var(--tx3)">→</span>');
+
+  var extraMsg='';
+  if(rec.feasible){
+    var save = fastest.cost-pick.cost;
+    var extra = pick.minutes-fastest.minutes;
+    var base = save>0
+      ? '相比最快方案（'+fastest.kind+'，'+fastest.minutes+' 分 / '+fastest.cost+' 元）<strong>省 '+save+' 元</strong>，多花 '+extra+' 分钟。'
+      : '这已经是可行方案里最快的一个（'+fastest.minutes+' 分 / '+fastest.cost+' 元）。';
+    if(rec.preferPaid>0) extraMsg='<br>为满足「尽量」偏好，比最便宜的可行方案（'+(rec.cheapest?rec.cheapest.kind:'—')+'，'+(rec.cheapest?rec.cheapest.cost:'—')+' 元）<strong>多付 '+rec.preferPaid+' 元</strong>。';
+    if(budget!=null) extraMsg+='<br>预算上限 '+budget+' 元，还剩 '+(budget-pick.cost)+' 元。';
+    $('h-save').innerHTML = base+extraMsg;
+  } else {
+    var tooExpensive = plans.filter(function(p){return p.feasible&&!p.isRange&&!p.ruleBlock&&p.minutes<=limit;})
+                            .sort(function(a,b){return a.cost-b.cost;})[0];
+    if(budget!=null && tooExpensive){
+      $('h-lab').textContent='赶得上，但超预算';
+      $('h-save').innerHTML = '限时内最快的合规方案是 <strong>'+tooExpensive.kind+' '+tooExpensive.minutes+' 分 / '+tooExpensive.cost+' 元</strong>，'
+        +'超出预算 <strong>'+(tooExpensive.cost-budget)+' 元</strong>。把预算提到 '+tooExpensive.cost+' 元就能走。';
+    } else {
+      $('h-save').innerHTML = '最快的合规方案（'+fastest.kind+'）门到门也要 <strong>'+fastest.minutes+' 分钟</strong>，超过限时 '+rec.gap+' 分钟。其中纯乘车 '+fastest.ride+' 分钟，另有隐藏时间 '+fastest.oh+' 分钟。';
+    }
+  }
+
+  // 放宽建议
+  var adv=$('advise'), rows='';
+  [0,5,10,15,30].forEach(function(d){
+    var t=pick.minutes+d;
+    if(t>=limit*3) return;
+    var c=plans.filter(function(p){return hardOK(p,budget)&&p.minutes<=t;}).sort(function(a,b){return cmpRec(a,b,hasPrefer(RULES));})[0];
+    if(!c) return;
+    var s=pick.cost-c.cost;
+    rows += '<span>放宽到 '+t+' 分钟</span><b>'+c.kind+' '+c.minutes+' 分 / '+c.cost+' 元'+(s>0?'　（省 '+s+' 元）':(c===pick?'　（无更优）':''))+'</b>';
+  });
+  if(budget!=null){
+    [5,10,20,50].forEach(function(d){
+      var b2=budget+d;
+      var c=plans.filter(function(p){return p.feasible&&!p.isRange&&!p.ruleBlock&&p.cost<=b2&&p.minutes<=limit;})
+                 .sort(function(a,b){return cmpRec(a,b,hasPrefer(RULES));})[0];
+      if(!c||c===pick) return;
+      rows += '<span>预算提到 '+b2+' 元</span><b>'+c.kind+' '+c.minutes+' 分 / '+c.cost+' 元　（多花 '+d+' 元）'+'</b>';
+    });
+  }
+  adv.innerHTML=rows; $('advise-card').style.display = rows?'block':'none';
+
+  // 表格
+  var tb=$('tbody'); tb.innerHTML='';
+  plans.sort(function(a,b){return a.minutes-b.minutes;});
+  plans.forEach(function(p){
+    var tr=document.createElement('tr');
+    var st='', cls='';
+    if(p.isRange){ st='<span class="st st-pf">区间</span>'; cls='excl'; }
+    else if(!p.feasible){ st='<span class="st st-ex">超出可行距离</span>'; cls='excl'; }
+    else if(p.ruleBlock){ st='<span class="st st-ex">'+p.ruleBlock+'</span>'; cls='excl'; }
+    else if(budget!=null&&p.cost>budget){ st='<span class="st st-no">超预算</span>'; cls='over'; }
+    else if(p===pick){ st='<span class="st st-rec">推荐</span>'; cls='pick'; }
+    else if(p.minutes>limit){ st='<span class="st st-no">超时</span>'; cls='over'; }
+    else if(p.pareto){ st='<span class="st st-alt">备选</span>'; }
+    else { st='<span class="st st-pf">被支配</span>'; }
+    if(p.preferHit&&cls!=='pick') st+=' <span class="st st-alt">合偏好</span>';
+    tr.className=cls;
+    var estBadge=(p.costEst||p.rideEst)?' <span class="est">估算</span>':'';
+    tr.innerHTML='<td>'+p.kind+'</td>'
+      +'<td><strong>'+p.minutes+' 分</strong>'+(p.rideEst?'<span class="est">估算</span>':'')+'</td>'
+      +'<td>'+p.cost+' 元'+(p.costEst?'<span class="est">估算</span>':'')+'</td>'
+      +'<td class="hidden">'+p.ride+' 分乘车 + '+p.oh+' 分'+(p.ohLabel?'（'+p.ohLabel+'）':'')+'</td>'
+      +'<td>'+p.ride+' 分</td>'
+      +'<td>'+p.oh+' 分</td>'
+      +'<td>'+st+estBadge+(p.note?'<br><span style="font-size:11px;color:var(--tx3)">'+p.note+'</span>':'')+'</td>';
+    tb.appendChild(tr);
+  });
+  $('table-card').style.display='block';
+  $('tblNote').textContent='（直线 '+built.straight.toFixed(1)+' km / 路网驾车 '+built.drv+' km / 换乘 '+built.transfers+' 次）';
+  $('tableNote').innerHTML='「被支配」= 存在另一个方案既不慢也不贵，可以直接排除。「超出可行距离」= 步行超过 '+CONFIG.limit.walkKm+' km 或骑行超过 '+CONFIG.limit.bikeKm+' km，不作为候选。';
+
+  // 说明
+  $('explain').innerHTML = built.live
+    ? '<span>距离与线路</span><b>来自高德真实路径规划：驾/骑/步行路网距离、地铁线路、换乘次数、公交票价都是真值</b>'
+     +'<span>为什么还要自己算时间</span><b>高德给的是「行程时间」，不含叫车等待、枢纽排队、找车停车。本模型在其上叠加隐藏开销，得到门到门时间</b>'
+     +'<span>高峰期车速</span><b>普通道路 20 km/h、快速路 50 km/h（平峰 30 / 70），用于生成打车的保守区间</b>'
+     +'<span>枢纽排队</span><b>北京西站/南站 8 分钟、机场 10–12 分钟，这是火车站打车被系统性低估的主因</b>'
+     +'<span>哪些数字仍不可信</span><b>枢纽排队时长、快速路占比、高峰期占比仍是经验值，需要拿自己的行程校准</b>'
+    : '<span>为什么不能用地图的时间</span><b>OSRM 路网在北京给出 58–79 km/h 的驾车速度，那是自由流时间，不含红绿灯和拥堵。所以本模型只取它的<b>距离</b>，时间自行按场景速度推算。</b>'
+     +'<span>高峰期车速</span><b>普通道路 20 km/h、快速路 50 km/h（平峰 30 / 70），按路程中快速路占比加权</b>'
+     +'<span>轨道端到端速度</span><b>地铁 28 km/h（含停站与站内步行），每次换乘 +8 分钟；公交 16 km/h；机场快线单独按 100 km/h 计</b>'
+     +'<span>北京西站排队</span><b>出租车枢纽排队按 8 分钟计（机场 10–12 分钟），这是火车站打车被低估的主因</b>'
+     +'<span>哪些数字仍不可信</span><b>换乘次数、地铁线路走向是估算值。接入高德 Key 后，这些会由真实路径规划替换</b>';
+  $('tip').innerHTML=(inputNote?'<b style="color:var(--amber)">'+inputNote+'</b> ':'')
+    +'当前时段：'+({peak:'高峰',offpeak:'平峰',night:'夜间'})[period]+'。切换时段可以看到打车时间的区间。';
+}
+
+// 预置路线快捷入口
+var PRESETS=[['北京西站','莲葩园',19],['北京西站','大兴机场',90],['北京南站','北京大学东门',60],['国贸','首都机场三号航站楼',60],['天通苑北','中关村',45]];
+$('chips').innerHTML = PRESETS.map(function(p,i){
+  return '<span class="chip" data-i="'+i+'">'+p[0]+' → '+p[1]+'</span>';
+}).join('');
+$('chips').addEventListener('click',function(e){
+  var el=e.target.closest('.chip'); if(!el) return;
+  var p=PRESETS[+el.dataset.i];
+  $('origin').value=p[0]; $('dest').value=p[1]; $('limit').value=p[2];
+  render();
+});
+
+/* ---------------- 分享链接：状态写进 URL hash ---------------- */
+function encodeRules(rules){
+  return (rules||[]).filter(function(r){ return r.modes&&r.modes.length; })
+    .map(function(r){ return r.type+':'+r.modes.join('-'); }).join(',');
+}
+function decodeRules(s){
+  if(!s) return [];
+  var out=[];
+  s.split(',').forEach(function(seg){
+    var i=seg.indexOf(':'); if(i<0) return;
+    var t=seg.slice(0,i), ms=seg.slice(i+1).split('-').filter(function(m){
+      return MODES.some(function(x){return x[0]===m;});
+    });
+    if(['only','avoid','prefer'].indexOf(t)>=0 && ms.length) out.push({type:t,modes:ms});
+  });
+  return out;
+}
+function syncURL(o,d,l,p,b,rules){
+  var q=new URLSearchParams();
+  q.set('o',o); q.set('d',d); q.set('l',l); q.set('p',p);
+  if(b!=null) q.set('b',b);
+  var r=encodeRules(rules); if(r) q.set('r',r);
+  try{ history.replaceState(null,'','#'+q.toString()); }
+  catch(e){ try{ location.hash=q.toString(); }catch(e2){} } // file:// 下 replaceState 会抛错
+}
+function readURL(){
+  var h=(location.hash||'').replace(/^#/,'');
+  if(!h) return false;
+  var q=new URLSearchParams(h);
+  var o=q.get('o'), d=q.get('d'), l=q.get('l'), p=q.get('p'), b=q.get('b'), r=q.get('r');
+  if(!o||!d) return false;
+  $('origin').value=o; $('dest').value=d;
+  if(l) $('limit').value=l;
+  if(p) $('period').value=p;
+  $('budget').value = (b!=null&&b!=='')?b:'';
+  RULES=decodeRules(r);
+  return true;
+}
+
+/* ---------------- Key 设置面板 ---------------- */
+function setBadge(){
+  var on=liveReady();
+  $('mode').className='badge '+(on?'b-live':'b-demo');
+  $('mode').textContent = on?'高德实时 + 模型修正':'内置真实路网数据';
+  $('keystatus').className='badge '+(on?'b-live':'b-demo');
+  $('keystatus').textContent = on?'已配置':'未配置';
+  $('keycard').className='card'+(on?'':' keycard');
+}
+(function(){
+  var c=getKey();
+  $('amapKey').value=c.k; $('amapSec').value=c.s;
+  setBadge();
+  $('fold').addEventListener('click',function(){
+    var hidden=$('keybody').classList.toggle('hid');
+    $('fold').textContent = hidden?'展开':'收起';
+  });
+  $('saveKey').addEventListener('click',function(){
+    localStorage.setItem('amap_key',$('amapKey').value.trim());
+    localStorage.setItem('amap_sec',$('amapSec').value.trim());
+    AMAP.loaded=false; AMAP.loading=false;
+    setBadge();
+    $('keymsg').textContent='已保存到本机浏览器。点「测试连接」验证一下。';
+  });
+  $('clearKey').addEventListener('click',function(){
+    localStorage.removeItem('amap_key'); localStorage.removeItem('amap_sec');
+    $('amapKey').value=''; $('amapSec').value='';
+    AMAP.loaded=false; AMAP.loading=false;
+    setBadge(); $('keymsg').textContent='已清除，回到内置数据模式。';
+  });
+  $('testKey').addEventListener('click',async function(){
+    if(!liveReady()){
+      $('keymsg').textContent='两个都必填。只填 Key 不填安全密钥，高德会报 INVALID_USER_SCODE。';
+      return;
+    }
+    $('keymsg').textContent='正在测试…';
+    var st=await loadAmap();
+    if(st!==null){
+      $('keymsg').innerHTML='<b>JS API 加载失败（'+st+'）。</b>当前页面地址 <code>'+location.protocol+'//'
+        +(location.host||'（无 host，说明是 file:// 直接打开）')+'</code>。'
+        +'高德靠域名白名单鉴权，file:// 没有域名会被拒绝 —— 请用本地服务器打开（命令见下面第 5 步）。';
+      return;
+    }
+    var g=await geoOne('北京西站');
+    $('keymsg').innerHTML = g
+      ? '<b>连接成功。</b>「北京西站」→ '+g.name+'（'+g.lng.toFixed(5)+', '+g.lat.toFixed(5)+'）'+g.addr+'。现在可以查任意地点了。'
+      : '<b>JS 已加载，但地名查询返回空。</b>通常是当日配额用尽，或 Key 的服务平台选错了（应为 Web端(JS API)）。';
+  });
+})();
+
+/* ---------------- 输入补全 ---------------- */
+/* 本地模糊匹配：容忍打错一个字（莲苞园 → 莲葩园） */
+function editDist(a,b){
+  var m=a.length,n=b.length;
+  if(Math.abs(m-n)>2) return 9;
+  var prev=[],cur=[];
+  for(var j=0;j<=n;j++) prev[j]=j;
+  for(var i=1;i<=m;i++){
+    cur[0]=i;
+    for(var j=1;j<=n;j++){
+      cur[j]=Math.min(prev[j]+1, cur[j-1]+1, prev[j-1]+(a[i-1]===b[j-1]?0:1));
+    }
+    prev=cur.slice();
+  }
+  return prev[n];
+}
+function scoreName(q,name){
+  if(!q) return 0;
+  if(name===q) return 100;
+  if(name.indexOf(q)===0) return 80;
+  if(name.indexOf(q)>=0) return 60;
+  // 顺序 subsequence：输入「bdj」能命中「北京大学东门」
+  var i=0,j=0;
+  while(i<q.length&&j<name.length){ if(q[i]===name[j]) i++; j++; }
+  if(i===q.length) return 40;
+  var d=editDist(q,name);
+  if(d<=1) return 30;
+  if(d<=2 && name.length>=4) return 15;
+  return 0;
+}
+function localSuggest(q){
+  return Object.keys(POI)
+    .map(function(n){ return {name:n, sub:'内置', score:scoreName(q,n)}; })
+    .filter(function(x){ return x.score>0; })
+    .sort(function(a,b){ return b.score-a.score || a.name.length-b.name.length; })
+    .slice(0,8);
+}
+function amapSuggest(q){
+  return new Promise(function(res){
+    if(!liveReady()||!window.AMap||!AMap.AutoComplete) return res([]);
+    try{
+      var ac=new AMap.AutoComplete({city:'北京',citylimit:true});
+      ac.search(q,function(status,result){
+        if(status!=='complete'||!result||!result.tips) return res([]);
+        res(result.tips.filter(function(t){ return t&&t.name&&t.location; })
+          .slice(0,8).map(function(t){
+            return {name:t.name, sub:([t.district,t.address].filter(Boolean).join(' ')).slice(0,36), score:70};
+          }));
+      });
+    }catch(e){ res([]); }
+  });
+}
+function hl(name,q){
+  var i=name.indexOf(q);
+  if(i<0) return name;
+  return name.slice(0,i)+'<b>'+name.slice(i,i+q.length)+'</b>'+name.slice(i+q.length);
+}
+function setupAC(inputId,listId){
+  var inp=$(inputId), box=$(listId);
+  var items=[], idx=-1, timer=null, lastQ='';
+  function close(){ box.classList.remove('open'); box.innerHTML=''; idx=-1; }
+  function paint(){
+    if(!items.length){
+      box.innerHTML='<div class="ac-empty">没匹配到。'+(liveReady()?'':'配置高德 Key 后可查任意地点')+'</div>';
+      box.classList.add('open'); return;
+    }
+    box.innerHTML=items.map(function(it,i){
+      return '<div class="ac-i'+(i===idx?' on':'')+'" data-i="'+i+'">'+hl(it.name,lastQ)
+        +'<small>'+it.sub+'</small></div>';
+    }).join('');
+    box.classList.add('open');
+  }
+  function pick(i){
+    var it=items[i]; if(!it) return;
+    inp.value=it.name; close(); render();
+  }
+  inp.addEventListener('input',function(){
+    var q=inp.value.trim(); lastQ=q;
+    if(!q){ close(); return; }
+    items=localSuggest(q);
+    paint();
+    clearTimeout(timer);
+    timer=setTimeout(async function(){
+      if(inp.value.trim()!==q) return;
+      var live=await amapSuggest(q);
+      if(inp.value.trim()!==q) return;
+      if(live.length){
+        var seen={}; items.forEach(function(x){ seen[x.name]=1; });
+        items=live.concat(items.filter(function(x){ return !seen[x.name]; })).slice(0,8);
+      }
+      paint();
+    },240);
+  });
+  inp.addEventListener('keydown',function(e){
+    if(!box.classList.contains('open')) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); idx=Math.min(idx+1,items.length-1); paint(); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); idx=Math.max(idx-1,0); paint(); }
+    else if(e.key==='Enter'){ if(idx>=0){ e.preventDefault(); pick(idx); } else { close(); render(); } }
+    else if(e.key==='Escape'){ close(); }
+  });
+  box.addEventListener('mousedown',function(e){
+    var el=e.target.closest('.ac-i'); if(!el) return;
+    e.preventDefault(); pick(+el.dataset.i);
+  });
+  inp.addEventListener('blur',function(){ setTimeout(close,150); });
+  inp.addEventListener('focus',function(){ if(inp.value.trim()){ lastQ=inp.value.trim(); items=localSuggest(lastQ); paint(); } });
+}
+
+/* ---------------- 规则区 UI ---------------- */
+function renderRules(){
+  var box=$('rules');
+  if(!RULES.length){
+    box.innerHTML='<p class="note">还没加规则 —— 默认所有方式都参与比较。</p>';
+    return;
+  }
+  var LAB={only:'只能',avoid:'不能',prefer:'尽量'};
+  box.innerHTML=RULES.map(function(r,i){
+    return '<div class="rule" data-i="'+i+'">'
+      +'<select class="rtype">'
+      +['only','avoid','prefer'].map(function(t){
+          return '<option value="'+t+'"'+(r.type===t?' selected':'')+'>'+LAB[t]+'</option>';
+        }).join('')
+      +'</select>'
+      +'<div class="modes">'+MODES.map(function(m){
+          return '<span class="mchip'+(r.modes.indexOf(m[0])>=0?' on':'')+'" data-m="'+m[0]+'">'+m[1]+'</span>';
+        }).join('')+'</div>'
+      +'<button class="del" data-del="1">删除</button>'
+      +'</div>';
+  }).join('');
+}
+$('rules').addEventListener('click',function(e){
+  var row=e.target.closest('.rule'); if(!row) return;
+  var i=+row.dataset.i;
+  if(e.target.dataset.del){ RULES.splice(i,1); renderRules(); render(); return; }
+  var chip=e.target.closest('.mchip'); if(!chip) return;
+  var m=chip.dataset.m, arr=RULES[i].modes, k=arr.indexOf(m);
+  if(k>=0) arr.splice(k,1); else arr.push(m);
+  renderRules(); render();
+});
+$('rules').addEventListener('change',function(e){
+  if(!e.target.classList||!e.target.classList.contains('rtype')) return;
+  var row=e.target.closest('.rule'); if(!row) return;
+  RULES[+row.dataset.i].type=e.target.value; render();
+});
+$('addRule').addEventListener('click',function(){
+  RULES.push({type:'avoid',modes:['taxi']}); renderRules(); render();
+});
+$('budget').addEventListener('input',function(){ render(); });
+
+$('share').addEventListener('click',function(){
+  var b=$('budget').value.trim();
+  var url=location.href.split('#')[0]+'#o='+encodeURIComponent($('origin').value.trim())
+    +'&d='+encodeURIComponent($('dest').value.trim())
+    +'&l='+encodeURIComponent($('limit').value)+'&p='+encodeURIComponent($('period').value)
+    +(b?'&b='+encodeURIComponent(b):'')
+    +(encodeRules(RULES)?'&r='+encodeURIComponent(encodeRules(RULES)):'');
+  var done=function(){ $('sharemsg').textContent='已复制。对方打开时会带上你的 Key 吗？不会 —— Key 只在你本机，对方没配就跑内置数据。'; };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done,function(){
+      $('sharemsg').innerHTML='复制失败，手动选中：<code>'+url+'</code>';
+    });
+  } else {
+    window.prompt('复制这个链接', url); $('sharemsg').textContent='已弹出链接。';
+  }
+});
+
+$('go').addEventListener('click',render);
+$('period').addEventListener('change',render);
+setupAC('origin','ac-origin');
+setupAC('dest','ac-dest');
+readURL();
+renderRules();
+render();
+</script>
+</body>
+</html>
