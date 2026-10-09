@@ -265,10 +265,12 @@ var CONFIG = {
     busWait: 7
   },
   // 端到端速度（含停站/等灯/站内步行），不是运行速度
-  railKmh: 28, busKmh: 16, expressKmh: 100,
+  railKmh: 28, busKmh: 16, busKmhNight: 22, expressKmh: 100,
   railDetour: 1.25, busDetour: 1.35, transfer: 8,
   // 可行性上限：超出就不是候选方案
   limit: { walkKm:2.5, bikeKm:20 },
+  // 推荐方案必须比限时多留这几分钟，避免卡着时限推荐
+  safetyBuffer: 4,
   // 限制时间未填/无效时的默认值（不产生 NaN）
   defaultLimit: 45,
   taxi: { startKm:3, startFee:13, perKm:2.3, fuel:1, longKm:15, longRate:1.5, stallUnit:5 },
@@ -388,21 +390,29 @@ function buildPlans(origin,dest,period){
     ohLabel:'叫车'+CONFIG.overhead.taxiCall[period]+'分'+ (hub?' + 枢纽排队'+hub+'分':''),
     cost:taxiFee(d.drv,{stallMin:stall,peak:period==='peak',night:period==='night',toll:toll}),
     feasible:true, note:period==='peak'?'含低速等候费':'' , src:'calc', modes:['taxi']});
-  var dmOff=driveMin(d.drv,'offpeak');
-  P.push({kind:'打车（平峰）',legs:['步行到上车点','出租车','步行到门口'],ride:dmOff,
-    oh:CONFIG.overhead.taxiCall.offpeak+hub, ohLabel:'叫车5分'+(hub?' + 枢纽排队'+hub+'分':''),
-    cost:taxiFee(d.drv,{stallMin:Math.round(dmOff*0.35),toll:toll}),
-    feasible:true, note:'若避开高峰', src:'calc', isRange:true, modes:['taxi']});
-  // 地铁
+  // 「若避开高峰」只有在当前就是高峰时才有意义；平峰/夜间下它并不更快，会误导
+  if(period==='peak'){
+    var dmOff=driveMin(d.drv,'offpeak');
+    P.push({kind:'打车（平峰）',legs:['步行到上车点','出租车','步行到门口'],ride:dmOff,
+      oh:CONFIG.overhead.taxiCall.offpeak+hub, ohLabel:'叫车5分'+(hub?' + 枢纽排队'+hub+'分':''),
+      cost:taxiFee(d.drv,{stallMin:Math.round(dmOff*0.35),toll:toll}),
+      feasible:true, note:'若避开高峰', src:'calc', isRange:true, modes:['taxi']});
+  }
+  // 地铁：夜间 22:30 之后多数线路已无末班车，不作为候选
   var railKm=straight*CONFIG.railDetour;
   var metroRide = air ? railToAirport(straight,d.transfers)-7 : Math.round(railKm/CONFIG.railKmh*60)+d.transfers*CONFIG.transfer;
+  var noMetro = period==='night';
   P.push({kind:'地铁',legs:['步行到站','地铁'+(air?' '+air.name:''),'步行到目的地'],ride:metroRide,
     oh:CONFIG.overhead.metro.inout+CONFIG.overhead.metro.wait, ohLabel:'进出站4分 + 候车3分',
-    cost: air?air.fare : metroFee(railKm), feasible:true, note:d.transfers+'次换乘', src:'calc', modes:['metro']});
-  // 公交
+    cost: air?air.fare : metroFee(railKm), feasible:!noMetro,
+    unavail: noMetro?'夜间无末班车':'',
+    note: noMetro?'夜间 22:30 后多数线路已无末班车':d.transfers+'次换乘', src:'calc', modes:['metro']});
+  // 公交：夜间路况好，端到端速度上调
   var busKm=straight*CONFIG.busDetour;
-  P.push({kind:'公交',legs:['步行到站','公交','步行到目的地'],ride:Math.round(busKm/CONFIG.busKmh*60)+4,
-    oh:CONFIG.overhead.busWait, ohLabel:'候车7分', cost:busFee(busKm), feasible:true, src:'calc', modes:['bus']});
+  var busKmh = period==='night' ? CONFIG.busKmhNight : CONFIG.busKmh;
+  P.push({kind:'公交',legs:['步行到站','公交','步行到目的地'],ride:Math.round(busKm/busKmh*60)+4,
+    oh:CONFIG.overhead.busWait, ohLabel:'候车7分', cost:busFee(busKm), feasible:true,
+    note: period==='night'?('夜间路况好，按 '+busKmh+' km/h 计'):'', src:'calc', modes:['bus']});
   // 骑行（OSRM 真实）
   P.push({kind:'骑行',legs:['找车','共享单车','停车'],ride:d.bike.min,
     oh:CONFIG.overhead.bike.find+CONFIG.overhead.bike.park, ohLabel:'找车4分 + 停车2分',
@@ -464,13 +474,16 @@ function markPareto(ps,budget){
   ps.forEach(function(p){ if(!hardOK(p,budget)) p.pareto=false; });
   return ps;
 }
+/* 有效时限 = 限时 - 安全缓冲。卡着时限到的方案不算「赶得上」 */
+function effLimit(limit){ return Math.max(1, limit-CONFIG.safetyBuffer); }
 function recommend(ps,limit,budget,rules){
   var cand=ps.filter(function(p){ return hardOK(p,budget); });
-  var ok=cand.filter(function(p){ return p.minutes<=limit; });
+  var ok=cand.filter(function(p){ return p.minutes<=effLimit(limit); });
   var pref=hasPrefer(rules);
   if(!ok.length){
     var f=cand.slice().sort(function(a,b){return a.minutes-b.minutes;})[0];
-    return {feasible:false, pick:f, gap:f?f.minutes-limit:null, cand:cand};
+    return {feasible:false, pick:f, gap:f?Math.max(0,f.minutes-limit):null,
+            tight:!!(f&&f.minutes<=limit), cand:cand};
   }
   var pick=ok.slice().sort(function(a,b){ return cmpRec(a,b,pref); })[0];
   var cheapest=ok.slice().sort(function(a,b){ return a.cost-b.cost||a.minutes-b.minutes; })[0];
@@ -489,9 +502,14 @@ function riskLevel(margin,limit){
    只做三件事：地名→坐标、真实路网距离、真实公交/地铁方案。
    时间仍然由本模型按场景速度/隐藏开销修正 —— 这是产品的核心。
    ========================================================= */
-var AMAP={loaded:false,loading:false};
+var AMAP={loaded:false,loading:false,p:null};
+/* localStorage 在隐私模式 / file:// 沙箱里可能直接抛 SecurityError，
+   这里一律兜住，返回空串 —— 页面必须照常能跑内置数据模式 */
+function lsGet(k){ try{ return localStorage.getItem(k)||''; }catch(e){ return ''; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); return true; }catch(e){ return false; } }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){} }
 function getKey(){
-  return { k:(localStorage.getItem('amap_key')||'').trim(), s:(localStorage.getItem('amap_sec')||'').trim() };
+  return { k:lsGet('amap_key').trim(), s:lsGet('amap_sec').trim() };
 }
 function liveReady(){ var c=getKey(); return !!(c.k&&c.s); }
 
@@ -499,17 +517,19 @@ function loadAmap(){
   var c=getKey();
   if(!c.k||!c.s) return Promise.resolve('nokey');
   if(AMAP.loaded) return Promise.resolve(null);
-  if(AMAP.loading) return Promise.resolve('loading');
+  // 并发调用：复用同一个 Promise 等待加载完成，而不是返回 'loading' 字符串
+  if(AMAP.loading && AMAP.p) return AMAP.p;
   AMAP.loading=true;
   window._AMapSecurityConfig={securityJsCode:c.s};
-  return new Promise(function(res){
+  AMAP.p=new Promise(function(res){
     var sc=document.createElement('script');
     sc.src='https://webapi.amap.com/maps?v=2.0&key='+encodeURIComponent(c.k)
       +'&plugin=AMap.PlaceSearch,AMap.AutoComplete,AMap.Driving,AMap.Riding,AMap.Walking,AMap.Transfer';
-    sc.onload=function(){ AMAP.loading=false; AMAP.loaded=!!window.AMap; res(AMAP.loaded?null:'nosdk'); };
-    sc.onerror=function(){ AMAP.loading=false; res('neterr'); };
+    sc.onload=function(){ AMAP.loading=false; AMAP.p=null; AMAP.loaded=!!window.AMap; res(AMAP.loaded?null:'nosdk'); };
+    sc.onerror=function(){ AMAP.loading=false; AMAP.p=null; res('neterr'); };
     document.head.appendChild(sc);
   });
+  return AMAP.p;
 }
 function amapCall(make,run){
   return new Promise(function(res){
@@ -571,7 +591,7 @@ function parseTransit(res){
     if(isMetro && !metro) metro=rec;
     if(!isMetro && !bus) bus=rec;
   });
-  if(!metro && bus) metro=bus;
+  // 没有地铁方案就不伪造一条：否则表格里会出现内容相同、却分别标「地铁」「公交」的两行
   return {metro:metro, bus:bus};
 }
 
@@ -603,7 +623,7 @@ async function buildPlansLive(origin,dest,period){
       ohLabel:'叫车'+CONFIG.overhead.taxiCall[period]+'分'+(hub?' + 枢纽排队'+hub+'分':''),
       cost:taxiFee(drv.km,{stallMin:stall,peak:period==='peak',night:period==='night',toll:toll}),
       feasible:true, note:'高德 '+drv.km+' km'+(period==='peak'?'，含低速等候费':''), src:'real', modes:['taxi']});
-    if(period!=='offpeak'){
+    if(period==='peak'){
       var dmOff=driveMin(drv.km,'offpeak');
       P.push({kind:'打车（平峰）',legs:['步行到上车点','出租车','步行到门口'],ride:dmOff,
         oh:CONFIG.overhead.taxiCall.offpeak+hub, ohLabel:'叫车5分'+(hub?' + 枢纽排队'+hub+'分':''),
@@ -614,19 +634,29 @@ async function buildPlansLive(origin,dest,period){
 
   // 地铁（高德真实方案：线路 + 换乘 + 票价）
   if(T.metro){
-    var m=T.metro;
-    var mc = m.cost!=null ? m.cost : metroFee(m.km);
+    var m=T.metro, noMetro = period==='night';
+    // 换乘罚时与内置引擎统一：每次换乘 +8 分钟，计入门到门时间
+    var mPen = m.transfers*CONFIG.transfer;
+    var mRide = isNum(m.ride) ? m.ride+mPen : null;
+    // 费用不在这里算：km 可能为 null（metroFee(null) 会静默算出 3 元），
+    // 交给 sanitizePlans 在补好 km 之后再反算，并打上「估算」标记
     P.push({kind:'地铁',legs:['步行到站'].concat(m.lines.length?m.lines:['地铁'],['步行到目的地']),
-      ride:m.ride, oh:CONFIG.overhead.metro.wait, ohLabel:'候车3分（高德时长已含步行与换乘）',
-      cost:mc, feasible:true, note:m.transfers+'次换乘', src:'real', modes:['metro']});
+      km: isNum(m.km)?m.km:null, ride:mRide, oh:CONFIG.overhead.metro.wait,
+      ohLabel:'候车3分（换乘 '+m.transfers+'次×'+CONFIG.transfer+'分 已计入乘车时间）',
+      cost: isNum(m.cost)?m.cost:null, feasible:!noMetro,
+      unavail: noMetro?'夜间无末班车':'',
+      note: noMetro?'夜间 22:30 后多数线路已无末班车':m.transfers+'次换乘', src:'real', modes:['metro']});
   }
   // 公交
   if(T.bus){
     var bu=T.bus;
-    var bc = bu.cost!=null ? bu.cost : busFee(bu.km);
+    var bRide = isNum(bu.ride) ? bu.ride : null;
+    if(isNum(bRide) && period==='night') bRide=Math.round(bRide*CONFIG.busKmh/CONFIG.busKmhNight);
     P.push({kind:'公交',legs:['步行到站'].concat(bu.lines.length?bu.lines:['公交'],['步行到目的地']),
-      ride:bu.ride, oh:0, ohLabel:'高德时长已含候车与步行',
-      cost:bc, feasible:true, note:bu.transfers+'次换乘', src:'real', modes:['bus']});
+      km: isNum(bu.km)?bu.km:null, ride:bRide, oh:0,
+      ohLabel:'高德时长已含候车与步行'+(period==='night'?('，夜间按 '+CONFIG.busKmhNight+' km/h 提速'):''),
+      cost: isNum(bu.cost)?bu.cost:null, feasible:true,
+      note: bu.transfers+'次换乘', src:'real', modes:['bus']});
   }
   // 骑行
   if(bike){
@@ -646,8 +676,11 @@ async function buildPlansLive(origin,dest,period){
 
 /* ---------------- 渲染 ---------------- */
 var $ = function(id){ return document.getElementById(id); };
+/* 渲染序号：只有最后一次 render 的结果允许写进页面，防止旧请求覆盖新结果 */
+var renderSeq=0;
 
 async function render(){
+  var seq=++renderSeq;
   var origin=$('origin').value.trim(), dest=$('dest').value.trim();
   if(!origin||!dest) return;
   $('tip').textContent='';
@@ -666,9 +699,11 @@ async function render(){
   var built=null, liveErr='';
   if(liveReady()){
     var st=await loadAmap();
+    if(seq!==renderSeq) return;   // 已有更新的查询，丢弃这次结果
     if(st===null){
       try{ built=await buildPlansLive(origin,dest,period); }
       catch(e){ liveErr='调用高德出错：'+String(e).slice(0,90); }
+      if(seq!==renderSeq) return;
       if(!built && !liveErr) liveErr='高德查不到「'+origin+' → '+dest+'」，已回退到内置数据。';
     } else {
       liveErr='高德 JS API 加载失败（'+st+'）。常见原因：Key 类型选错、域名白名单不含当前地址、或安全密钥没填。已回退到内置数据。';
@@ -743,13 +778,14 @@ async function render(){
   var hero=$('hero'); hero.style.display='block';
   var pick=rec.pick;
   hero.className = rec.feasible ? 'card hero' : 'card hero fail';
-  $('h-lab').textContent = rec.feasible ? '推荐方案' : '赶不上';
+  $('h-lab').textContent = rec.feasible ? '推荐方案' : (rec.tight?'余量不足':'赶不上');
   $('h-route').textContent = built.live&&built.resolved ? built.resolved[0]+' → '+built.resolved[1] : origin+' → '+dest;
   $('h-cost').innerHTML = pick.cost+' 元'+(pick.costEst?'<span class="est">估算</span>':'');
   $('h-time').innerHTML = pick.minutes+' 分'+(pick.rideEst?'<span class="est">估算</span>':'');
   $('h-ride').textContent = pick.ride+' 分';
   var margin = rec.feasible ? limit-pick.minutes : -rec.gap;
-  $('h-margin').textContent = rec.feasible ? margin+' 分' : '差 '+numOr(rec.gap,0)+' 分';
+  $('h-margin').textContent = rec.feasible ? margin+' 分'
+    : (rec.tight ? '仅剩 '+Math.max(0,limit-pick.minutes)+' 分' : '差 '+numOr(rec.gap,0)+' 分');
   var rk=riskLevel(margin,limit);
   $('h-risk').innerHTML='<span class="risk '+rk[1]+'">'+rk[0]+'</span>';
   $('h-legs').innerHTML = pick.legs.map(function(l){return '<span class="leg">'+l+'</span>';}).join('<span style="color:var(--tx3)">→</span>');
@@ -765,9 +801,14 @@ async function render(){
     if(budget!=null) extraMsg+='<br>预算上限 '+budget+' 元，还剩 '+(budget-pick.cost)+' 元。';
     $('h-save').innerHTML = base+extraMsg;
   } else {
-    var tooExpensive = plans.filter(function(p){return p.feasible&&!p.isRange&&!p.ruleBlock&&p.minutes<=limit;})
+    var tooExpensive = plans.filter(function(p){return p.feasible&&!p.isRange&&!p.ruleBlock&&p.minutes<=effLimit(limit);})
                             .sort(function(a,b){return a.cost-b.cost;})[0];
-    if(budget!=null && tooExpensive){
+    if(rec.tight){
+      $('h-save').innerHTML = '最快的合规方案（'+fastest.kind+'）门到门 <strong>'+fastest.minutes+' 分钟</strong>，'
+        +'没超过 '+limit+' 分钟，但只剩 <strong>'+Math.max(0,limit-fastest.minutes)+' 分钟</strong>余量，'
+        +'少于 '+CONFIG.safetyBuffer+' 分钟安全缓冲 —— 不建议你卡着走。把限时放宽到 '
+        +(fastest.minutes+CONFIG.safetyBuffer)+' 分钟，或换更快的方案。';
+    } else if(budget!=null && tooExpensive){
       $('h-lab').textContent='赶得上，但超预算';
       $('h-save').innerHTML = '限时内最快的合规方案是 <strong>'+tooExpensive.kind+' '+tooExpensive.minutes+' 分 / '+tooExpensive.cost+' 元</strong>，'
         +'超出预算 <strong>'+(tooExpensive.cost-budget)+' 元</strong>。把预算提到 '+tooExpensive.cost+' 元就能走。';
@@ -804,7 +845,7 @@ async function render(){
     var tr=document.createElement('tr');
     var st='', cls='';
     if(p.isRange){ st='<span class="st st-pf">区间</span>'; cls='excl'; }
-    else if(!p.feasible){ st='<span class="st st-ex">超出可行距离</span>'; cls='excl'; }
+    else if(!p.feasible){ st='<span class="st st-ex">'+(p.unavail||'超出可行距离')+'</span>'; cls='excl'; }
     else if(p.ruleBlock){ st='<span class="st st-ex">'+p.ruleBlock+'</span>'; cls='excl'; }
     else if(budget!=null&&p.cost>budget){ st='<span class="st st-no">超预算</span>'; cls='over'; }
     else if(p===pick){ st='<span class="st st-rec">推荐</span>'; cls='pick'; }
@@ -903,7 +944,7 @@ function setBadge(){
   $('keystatus').textContent = on?'已配置':'未配置';
   $('keycard').className='card'+(on?'':' keycard');
 }
-(function(){
+var initKeyPanel=function(){
   var c=getKey();
   $('amapKey').value=c.k; $('amapSec').value=c.s;
   setBadge();
@@ -912,16 +953,17 @@ function setBadge(){
     $('fold').textContent = hidden?'展开':'收起';
   });
   $('saveKey').addEventListener('click',function(){
-    localStorage.setItem('amap_key',$('amapKey').value.trim());
-    localStorage.setItem('amap_sec',$('amapSec').value.trim());
-    AMAP.loaded=false; AMAP.loading=false;
+    var ok=lsSet('amap_key',$('amapKey').value.trim()) && lsSet('amap_sec',$('amapSec').value.trim());
+    AMAP.loaded=false; AMAP.loading=false; AMAP.p=null;
     setBadge();
-    $('keymsg').textContent='已保存到本机浏览器。点「测试连接」验证一下。';
+    $('keymsg').textContent = ok
+      ? '已保存到本机浏览器。点「测试连接」验证一下。'
+      : '这个浏览器禁止写入本地存储（隐私模式？），Key 只在当前页面有效。';
   });
   $('clearKey').addEventListener('click',function(){
-    localStorage.removeItem('amap_key'); localStorage.removeItem('amap_sec');
+    lsDel('amap_key'); lsDel('amap_sec');
     $('amapKey').value=''; $('amapSec').value='';
-    AMAP.loaded=false; AMAP.loading=false;
+    AMAP.loaded=false; AMAP.loading=false; AMAP.p=null;
     setBadge(); $('keymsg').textContent='已清除，回到内置数据模式。';
   });
   $('testKey').addEventListener('click',async function(){
@@ -942,7 +984,10 @@ function setBadge(){
       ? '<b>连接成功。</b>「北京西站」→ '+g.name+'（'+g.lng.toFixed(5)+', '+g.lat.toFixed(5)+'）'+g.addr+'。现在可以查任意地点了。'
       : '<b>JS 已加载，但地名查询返回空。</b>通常是当日配额用尽，或 Key 的服务平台选错了（应为 Web端(JS API)）。';
   });
-})();
+};
+/* 整块包 try：Key 面板挂了也不能连累 chips / 规则 / 补全 / 首次渲染 */
+try{ initKeyPanel(); }
+catch(e){ if(window.console&&console.warn) console.warn('Key 面板初始化失败：',e); }
 
 /* ---------------- 输入补全 ---------------- */
 /* 本地模糊匹配：容忍打错一个字（莲苞园 → 莲葩园） */
@@ -1091,7 +1136,13 @@ $('rules').addEventListener('change',function(e){
 $('addRule').addEventListener('click',function(){
   RULES.push({type:'avoid',modes:['taxi']}); renderRules(); render();
 });
-$('budget').addEventListener('input',function(){ render(); });
+/* 预算：300ms 防抖 —— 每敲一个键就联网查一次既浪费配额，
+   也可能让先发出的旧请求后返回、覆盖掉新结果（render 内部还有 seq 令牌兜底） */
+var budgetTimer=null;
+$('budget').addEventListener('input',function(){
+  clearTimeout(budgetTimer);
+  budgetTimer=setTimeout(function(){ render(); },300);
+});
 
 $('share').addEventListener('click',function(){
   var b=$('budget').value.trim();
